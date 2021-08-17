@@ -1,4 +1,4 @@
-module htab
+module github.com/cbluth/htab
 
 go 1.16
 
