@@ -91,7 +91,7 @@ func getHTMLNode() (*html.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	if si.Mode()&os.ModeCharDevice != 0 || si.Size() <= 0 {
+	if (si.Mode() & os.ModeCharDevice) != 0 {
 		return nil, fmt.Errorf("%s", "missing stdin")
 	}
 	doc, err := html.Parse(os.Stdin)
