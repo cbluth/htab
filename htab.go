@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
-	"encoding/json"
 
 	// "gopkg.in/yaml.v3"
 	"golang.org/x/net/html"
@@ -16,7 +19,7 @@ import (
 type (
 	table struct {
 		header []string
-		rows [][]string
+		rows   [][]string
 	}
 )
 
@@ -27,22 +30,100 @@ func main() {
 }
 
 func cli() error {
-	// TODO: here, read stdin or from url arg
-	htm, err := getHTMLNode()
+	args, err := getArgs()
+	if err != nil {
+		return err
+	}
+	htm, err := getHTMLNode(args["url"])
 	if err != nil {
 		return err
 	}
 	tables := extractTables(htm)
-	for _, table := range tables {
-		jj, err := table.json()
+	if args["ordinal"] == "" {
+		for _, table := range tables {
+			j, err := table.json()
+			if err != nil {
+				return err
+			}
+			fmt.Println(j)
+		}
+	} else {
+		n, err := strconv.Atoi(args["ordinal"])
 		if err != nil {
 			return err
 		}
-		fmt.Println(jj)
+		if n > len(tables) {
+			return fmt.Errorf("not enough tables on page")
+		}
+		j, err := tables[n-1].json()
+		if err != nil {
+			return err
+		}
+		fmt.Println(j)
 	}
-	
-	
 	return nil
+}
+
+func getArgs() (map[string]string, error) {
+	args := map[string]string{
+		"format":  "",
+		"url":     "",
+		"ordinal": "",
+	}
+	dup := fmt.Errorf("cannot set more than one output format")
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "-j", "-json":
+			{
+				if args["format"] != "" {
+					return nil, dup
+				}
+				args["format"] = "json"
+			}
+		case "-y", "-yaml":
+			{
+				if args["format"] != "" {
+					return nil, dup
+				}
+				args["format"] = "yaml"
+			}
+		}
+		if strings.HasPrefix(arg, "https://") || strings.HasPrefix(arg, "http://") {
+			if hasStdin() {
+				return nil, fmt.Errorf("cant have url argument and process data on stdin")
+			}
+			u, err := url.Parse(arg)
+			if err != nil {
+				return nil, err
+			}
+			args["url"] = u.String()
+		}
+		if strings.HasPrefix(arg, "-n") {
+			args["ordinal"] = strings.NewReplacer(
+				"-n", "",
+			).Replace(arg)
+		}
+		if strings.HasPrefix(arg, "-d") {
+			if args["format"] != "" {
+				return nil, dup
+			}
+			args["format"] = "csv"
+			args["delimiter"] = strings.NewReplacer(
+				"-d", "",
+				`'`, "",
+				`"`, "",
+			).Replace(arg)
+		}
+	}
+	return args, nil
+}
+
+func hasStdin() bool {
+	si, err := os.Stdin.Stat()
+	if err != nil {
+		panic(err)
+	}
+	return (si.Mode()&os.ModeCharDevice) != 0 && si.Size() > 0
 }
 
 func grabTableHeader(tab *html.Node) []string {
@@ -86,17 +167,23 @@ func grabText(n *html.Node) string {
 	return b.String()
 }
 
-func getHTMLNode() (*html.Node, error) {
-	si, err := os.Stdin.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if (si.Mode() & os.ModeCharDevice) != 0 {
-		return nil, fmt.Errorf("%s", "missing stdin")
-	}
-	doc, err := html.Parse(os.Stdin)
-	if err != nil {
-		return nil, err
+func getHTMLNode(url string) (doc *html.Node, err error) {
+	// doc, err := &html.Node{}, (error)(nil)
+	if url == "" {
+		doc, err = html.Parse(os.Stdin)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		resp, err := http.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		doc, err = html.Parse(resp.Body)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return doc, nil
 }
@@ -148,6 +235,7 @@ func extractTables(htm *html.Node) []*table {
 }
 
 func (t *table) json() (string, error) {
+	// TODO: this has issues when processing non-standard tables
 	b := bytes.Buffer{}
 	j := []interface{}{}
 	if t.hasHeader() {

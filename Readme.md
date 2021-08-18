@@ -3,8 +3,6 @@
 htab - an html table to csv / tsv / json / yaml converter
 ---
 
-# WIP - THIS IS A WORK IN PROGRESS PROJECT, expect issues
-
 Install:
 ---
 install the normal "go" way:
