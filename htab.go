@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	// "gopkg.in/yaml.v3"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+	"gopkg.in/yaml.v2"
 )
 
 type (
@@ -41,11 +41,32 @@ func cli() error {
 	tables := extractTables(htm)
 	if args["ordinal"] == "" {
 		for _, table := range tables {
-			j, err := table.json()
-			if err != nil {
-				return err
+			ts := ""
+			switch args["format"] {
+			case "yaml":
+				{
+					ts, err = table.yaml()
+					if err != nil {
+						return err
+					}
+					ts = "---\n" + ts
+				}
+			case "json":
+				{
+					ts, err = table.json()
+					if err != nil {
+						return err
+					}
+				}
+			case "csv":
+				{
+					ts, err = table.csv(args["delimiter"])
+					if err != nil {
+						return err
+					}
+				}
 			}
-			fmt.Println(j)
+			fmt.Println(ts)
 		}
 	} else {
 		n, err := strconv.Atoi(args["ordinal"])
@@ -55,11 +76,32 @@ func cli() error {
 		if n > len(tables) {
 			return fmt.Errorf("not enough tables on page")
 		}
-		j, err := tables[n-1].json()
-		if err != nil {
-			return err
+		ts := ""
+		switch args["format"] {
+		case "yaml":
+			{
+				ts, err = tables[n-1].yaml()
+				if err != nil {
+					return err
+				}
+				ts = "---\n" + ts
+			}
+		case "json":
+			{
+				ts, err = tables[n-1].json()
+				if err != nil {
+					return err
+				}
+			}
+		case "csv":
+			{
+				ts, err = tables[n-1].csv(args["delimiter"])
+				if err != nil {
+					return err
+				}
+			}
 		}
-		fmt.Println(j)
+		fmt.Println(ts)
 	}
 	return nil
 }
@@ -113,7 +155,14 @@ func getArgs() (map[string]string, error) {
 				`'`, "",
 				`"`, "",
 			).Replace(arg)
+			if args["delimiter"] == "" {
+				args["delimiter"] = ","
+			}
 		}
+	}
+	if args["format"] == "" {
+		args["format"] = "csv"
+		args["delimiter"] = ","
 	}
 	return args, nil
 }
@@ -256,4 +305,46 @@ func (t *table) json() (string, error) {
 		return "", err
 	}
 	return b.String(), nil
+}
+
+func (t *table) yaml() (string, error) {
+	j, err := t.json()
+	if err != nil {
+		return "", err
+	}
+	y := (interface{})(nil)
+	err = yaml.Unmarshal([]byte(j), &y)
+	if err != nil {
+		return "", err
+	}
+	yy, err := yaml.Marshal(y)
+	if err != nil {
+		return "", err
+	}
+	return string(yy), nil
+}
+
+func (t *table) csv(delimiter string) (string, error) {
+	csv := ""
+	if t.hasHeader() {
+		for i, hc := range t.header {
+			csv = csv + hc
+			if i != len(t.header)-1 {
+				csv = csv + delimiter
+			} else {
+				csv = csv + "\n"
+			}
+		}
+	}
+	for _, row := range t.rows {
+		for i, hc := range row {
+			csv = csv + hc
+			if i != len(row)-1 {
+				csv = csv + delimiter
+			} else {
+				csv = csv + "\n"
+			}
+		}
+	}
+	return csv, nil
 }
