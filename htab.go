@@ -167,12 +167,17 @@ func getArgs() (map[string]string, error) {
 	return args, nil
 }
 
+// func hasStdin() bool {
+// 	si, err := os.Stdin.Stat()
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	return (si.Mode()&os.ModeNamedPipe) != 0 && si.Size() > 0
+// }
+
 func hasStdin() bool {
-	si, err := os.Stdin.Stat()
-	if err != nil {
-		panic(err)
-	}
-	return (si.Mode()&os.ModeCharDevice) != 0 && si.Size() > 0
+	si, _ := os.Stdin.Stat()
+	return si.Mode() & os.ModeNamedPipe != 0
 }
 
 func grabTableHeader(tab *html.Node) []string {
